@@ -1,7 +1,10 @@
 import { prisma } from "@/lib/db";
-import { sortByDistance, type EmergencyResource } from "@/lib/services/emergency-resources";
+import { sortByDistance, filterWithinRadius, type EmergencyResource } from "@/lib/services/emergency-resources";
 import { getEnvironmentSnapshot } from "./environment-snapshot";
 import type { LocationOption } from "./locations";
+
+/** Only facilities within this distance of the selected location are shown, so users elsewhere don't see another city's facilities. */
+const NEARBY_RADIUS_KM = 50;
 
 export interface EmergencyResourceView extends EmergencyResource {
   distanceKm: number;
@@ -12,6 +15,9 @@ export interface EmergencyData {
   location: LocationOption;
   availableLocations: LocationOption[];
   resources: EmergencyResourceView[];
+  radiusKm: number;
+  /** These facilities are static seed data, not a live directory — surfaced honestly in the UI. */
+  isSeedData: boolean;
 }
 
 export async function getEmergencyData(userId: string, requestedLocationId?: string): Promise<EmergencyData> {
@@ -60,11 +66,15 @@ export async function getEmergencyData(userId: string, requestedLocationId?: str
   for (const s of shelters) availabilityById.set(s.id, s.capacity != null ? `Capacity: ${s.capacity} · ${s.isActive ? "Active" : "Inactive"}` : "Availability unknown");
   for (const w of waterPoints) availabilityById.set(w.id, w.status === "UNKNOWN" ? "Availability unknown" : w.status.replace("_", " "));
 
-  const sorted = sortByDistance(resources, location);
+  // Only show facilities genuinely near the selected location — never another city's.
+  const nearby = filterWithinRadius(resources, location, NEARBY_RADIUS_KM);
+  const sorted = sortByDistance(nearby, location);
 
   return {
     location,
     availableLocations,
+    radiusKm: NEARBY_RADIUS_KM,
+    isSeedData: true,
     resources: sorted.map((r) => ({ ...r, availabilityLabel: availabilityById.get(r.id) ?? "Availability unknown" })),
   };
 }

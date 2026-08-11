@@ -43,9 +43,27 @@ export default async function RiskMapPage() {
         </Reveal>
       ) : (
         <Reveal>
-          <RiskMapView mapConfig={data.mapConfig} locations={data.locations} emergencyResources={data.emergencyResources} />
+          <RiskMapView
+            mapConfig={data.mapConfig}
+            center={data.center}
+            locations={data.locations}
+            emergencyResources={data.emergencyResources}
+          />
         </Reveal>
       )}
+
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-foreground-muted">
+        <span className="font-medium text-foreground">Legend:</span>
+        <span className="flex items-center gap-1.5"><span className="inline-block size-3 rounded-full bg-risk-low" /> Low</span>
+        <span className="flex items-center gap-1.5"><span className="inline-block size-3 rounded-full bg-risk-moderate" /> Moderate</span>
+        <span className="flex items-center gap-1.5"><span className="inline-block size-3 rounded-full bg-risk-elevated" /> Elevated</span>
+        <span className="flex items-center gap-1.5"><span className="inline-block size-3 rounded-full bg-risk-high" /> High</span>
+        <span className="flex items-center gap-1.5"><span className="inline-block size-3 rounded-full bg-risk-extreme" /> Extreme</span>
+        <span className="ml-2 flex items-center gap-1.5"><span className="inline-block size-2.5 rounded-sm" style={{ background: "#3b82f6" }} /> Hospital</span>
+        <span className="flex items-center gap-1.5"><span className="inline-block size-2.5 rounded-sm" style={{ background: "#8b5cf6" }} /> Shelter</span>
+        <span className="flex items-center gap-1.5"><span className="inline-block size-2.5 rounded-sm" style={{ background: "#06b6d4" }} /> Water point</span>
+        <span className="ml-auto italic">Facility pins are seed/demo data.</span>
+      </div>
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {data.locations.map((loc) => (

@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/db";
-import { getMapProvider } from "@/lib/providers/maps";
+import { getMapProvider, type MapProviderConfig } from "@/lib/providers/maps";
 import type { EmergencyResource } from "@/lib/services/emergency-resources";
-import { getAvailableLocations, type LocationOption } from "./locations";
+import { getAvailableLocations, resolveLocation, type LocationOption } from "./locations";
 
 export interface LocationRiskPoint extends LocationOption {
   /** Most recently computed overall risk score for this location, or null if none has been recorded yet. */
@@ -11,7 +11,9 @@ export interface LocationRiskPoint extends LocationOption {
 }
 
 export interface RiskMapData {
-  mapConfig: { name: string; clientToken: string | null; styleUrl?: string };
+  mapConfig: MapProviderConfig;
+  /** The globally-selected location the map should center on. */
+  center: { latitude: number; longitude: number; id: string; name: string };
   locations: LocationRiskPoint[];
   emergencyResources: EmergencyResource[];
 }
@@ -23,8 +25,9 @@ export interface RiskMapData {
  * a fabricated value — the UI must show that as "no data yet".
  */
 export async function getRiskMapData(userId: string): Promise<RiskMapData> {
-  const [locations, latestOverallScores, hospitals, shelters, waterPoints] = await Promise.all([
+  const [locations, selected, latestOverallScores, hospitals, shelters, waterPoints] = await Promise.all([
     getAvailableLocations(userId),
+    resolveLocation(userId),
     prisma.riskScore.findMany({
       where: { category: "OVERALL" },
       orderBy: [{ locationId: "asc" }, { computedAt: "desc" }],
@@ -34,6 +37,8 @@ export async function getRiskMapData(userId: string): Promise<RiskMapData> {
     prisma.shelter.findMany(),
     prisma.waterPoint.findMany(),
   ]);
+
+  if (!selected) throw new Error("NO_LOCATION_AVAILABLE");
 
   const scoreByLocation = new Map(latestOverallScores.map((s) => [s.locationId, s]));
 
@@ -57,6 +62,7 @@ export async function getRiskMapData(userId: string): Promise<RiskMapData> {
 
   return {
     mapConfig: provider.getClientConfig(),
+    center: { latitude: selected.latitude, longitude: selected.longitude, id: selected.id, name: selected.name },
     locations: locationPoints,
     emergencyResources,
   };

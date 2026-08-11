@@ -1,13 +1,21 @@
 import type { MapProvider, MapProviderConfig } from "./types";
 
-class MapboxProvider implements MapProvider {
-  readonly name = "Mapbox";
+/**
+ * Carto's free basemaps (basemaps.cartocdn.com) — no API key, no billing/credit
+ * card, and their usage policy permits application traffic (unlike raw OSM tiles,
+ * which discourage production use). Rendered client-side via Leaflet.
+ */
+class CartoMapProvider implements MapProvider {
+  readonly name = "Carto";
 
   getClientConfig(): MapProviderConfig {
     return {
       name: this.name,
-      clientToken: process.env.MAPBOX_TOKEN?.startsWith("pk.") ? process.env.MAPBOX_TOKEN : null,
-      styleUrl: "mapbox://styles/mapbox/light-v11",
+      tileUrl: "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
+      tileUrlDark: "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
+      attribution:
+        '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+      maxZoom: 19,
     };
   }
 
@@ -17,7 +25,7 @@ class MapboxProvider implements MapProvider {
 }
 
 export function getMapProvider(): MapProvider {
-  return new MapboxProvider();
+  return new CartoMapProvider();
 }
 
 export type { MapProvider, MapProviderConfig };

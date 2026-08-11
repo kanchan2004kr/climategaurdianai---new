@@ -1,11 +1,11 @@
 import type { Metadata } from "next";
-import { MapPin } from "lucide-react";
+import { ShieldCheck } from "lucide-react";
 import { auth } from "@/lib/auth";
 import { getEmergencyData } from "@/lib/services/dashboard/get-emergency-data";
-import { getMapProvider } from "@/lib/providers/maps";
 import { LocationSwitcher } from "@/components/dashboard/location-switcher";
 import { EmergencyResourceList } from "@/components/emergency/emergency-resource-list";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { Alert } from "@/components/ui/alert";
 import { Reveal } from "@/components/motion/reveal";
 
@@ -25,44 +25,47 @@ export default async function EmergencyPage(props: PageProps<"/emergency">) {
     return <Alert variant="error">Emergency resource data is temporarily unavailable. Please try again shortly.</Alert>;
   }
 
-  const mapConfig = getMapProvider().getClientConfig();
-
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-foreground">Emergency Resources</h1>
           <p className="mt-1 text-sm text-foreground-muted">
-            Hospitals, shelters and water points near {data.location.name}, sorted by distance.
+            Hospitals, shelters and water points within {data.radiusKm} km of {data.location.name}, sorted by distance.
           </p>
         </div>
         <LocationSwitcher locations={data.availableLocations} currentId={data.location.id} />
       </div>
 
-      {!mapConfig.clientToken && (
+      {data.isSeedData && data.resources.length > 0 && (
+        <div className="flex items-center gap-2 text-xs text-foreground-muted">
+          <Badge variant="neutral">Demo/seed facility data</Badge>
+          <span>These facilities are seeded reference records, not a live directory.</span>
+        </div>
+      )}
+
+      {data.resources.length === 0 ? (
         <Reveal>
           <Card>
-            <CardHeader className="flex-row items-center gap-2 space-y-0">
-              <MapPin className="size-4 text-foreground-muted" />
-              <div>
-                <CardTitle className="text-base">Interactive map not configured</CardTitle>
-                <CardDescription>
-                  Set a public <code>MAPBOX_TOKEN</code> to enable an interactive map view. Showing the
-                  distance-sorted list below in the meantime — nothing here is fabricated.
-                </CardDescription>
-              </div>
-            </CardHeader>
+            <CardContent className="flex flex-col items-center gap-2 p-8 text-center">
+              <ShieldCheck className="size-6 text-foreground-muted" />
+              <p className="text-sm font-medium text-foreground">No verified nearby facilities found</p>
+              <p className="max-w-sm text-sm text-foreground-muted">
+                There are no facilities in our current data within {data.radiusKm} km of {data.location.name}. Try a
+                different location, or contact local emergency services directly.
+              </p>
+            </CardContent>
+          </Card>
+        </Reveal>
+      ) : (
+        <Reveal>
+          <Card>
+            <CardContent className="p-6">
+              <EmergencyResourceList resources={data.resources} />
+            </CardContent>
           </Card>
         </Reveal>
       )}
-
-      <Reveal>
-        <Card>
-          <CardContent className="p-6">
-            <EmergencyResourceList resources={data.resources} />
-          </CardContent>
-        </Card>
-      </Reveal>
     </div>
   );
 }

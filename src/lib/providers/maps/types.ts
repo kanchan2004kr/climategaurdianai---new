@@ -1,7 +1,11 @@
 export interface MapProviderConfig {
   name: string;
-  clientToken: string | null; // safe to expose publicly (e.g. Mapbox public token), null if unconfigured
-  styleUrl?: string;
+  /** Leaflet tile URL template. Free/open provider — no API key or billing required. */
+  tileUrl: string;
+  /** Dark-theme tile URL template, when the provider offers one. */
+  tileUrlDark?: string;
+  attribution: string;
+  maxZoom: number;
 }
 
 export interface MapProvider {

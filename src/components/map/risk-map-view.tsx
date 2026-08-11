@@ -1,8 +1,10 @@
 "use client";
 
-import "mapbox-gl/dist/mapbox-gl.css";
+import "leaflet/dist/leaflet.css";
 import { useEffect, useRef, useState } from "react";
+import type { Map as LeafletMap } from "leaflet";
 import type { LocationRiskPoint } from "@/lib/services/dashboard/get-risk-map-data";
+import type { MapProviderConfig } from "@/lib/providers/maps";
 import type { EmergencyResource } from "@/lib/services/emergency-resources";
 import { Alert } from "@/components/ui/alert";
 
@@ -21,74 +23,89 @@ const RESOURCE_COLOR: Record<EmergencyResource["type"], string> = {
   RELIEF_CENTER: "#8b5cf6",
 };
 
+const RESOURCE_LABEL: Record<EmergencyResource["type"], string> = {
+  HOSPITAL: "Hospital",
+  SHELTER: "Shelter",
+  WATER_POINT: "Water point",
+  RELIEF_CENTER: "Relief center",
+};
+
+function escapeHtml(s: string): string {
+  return s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c] as string);
+}
+
 interface RiskMapViewProps {
-  mapConfig: { clientToken: string | null; styleUrl?: string };
+  mapConfig: MapProviderConfig;
+  center: { latitude: number; longitude: number; name: string };
   locations: LocationRiskPoint[];
   emergencyResources: EmergencyResource[];
 }
 
-export function RiskMapView({ mapConfig, locations, emergencyResources }: RiskMapViewProps) {
+export function RiskMapView({ mapConfig, center, locations, emergencyResources }: RiskMapViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const mapRef = useRef<import("mapbox-gl").Map | null>(null);
+  const mapRef = useRef<LeafletMap | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
-    if (!mapConfig.clientToken || !containerRef.current) return;
-
+    if (!containerRef.current) return;
     let cancelled = false;
 
-    import("mapbox-gl")
-      .then((mapboxgl) => {
+    import("leaflet")
+      .then((L) => {
         if (cancelled || !containerRef.current) return;
-        mapboxgl.default.accessToken = mapConfig.clientToken as string;
 
-        const first = locations[0];
-        const map = new mapboxgl.default.Map({
-          container: containerRef.current,
-          style: mapConfig.styleUrl ?? "mapbox://styles/mapbox/light-v11",
-          center: first ? [first.longitude, first.latitude] : [0, 20],
-          zoom: first ? 9 : 1.5,
-        });
+        const map = L.map(containerRef.current, { scrollWheelZoom: true }).setView(
+          [center.latitude, center.longitude],
+          9
+        );
         mapRef.current = map;
 
-        map.addControl(new mapboxgl.default.NavigationControl(), "top-right");
+        const isDark =
+          typeof document !== "undefined" && document.documentElement.classList.contains("dark");
+        L.tileLayer(isDark && mapConfig.tileUrlDark ? mapConfig.tileUrlDark : mapConfig.tileUrl, {
+          attribution: mapConfig.attribution,
+          maxZoom: mapConfig.maxZoom,
+        }).addTo(map);
 
-        map.on("load", () => setLoaded(true));
-
+        // Real risk markers per location, coloured by computed level.
         for (const loc of locations) {
           const color = loc.overallLevel ? LEVEL_COLOR[loc.overallLevel] ?? "#6b7280" : "#6b7280";
-          const label = loc.overallScore !== null ? `${loc.overallLevel} (${Math.round(loc.overallScore)})` : "No risk data yet";
-
-          const el = document.createElement("div");
-          el.style.width = "18px";
-          el.style.height = "18px";
-          el.style.borderRadius = "50%";
-          el.style.border = "2px solid white";
-          el.style.boxShadow = "0 0 0 1px rgba(0,0,0,0.2)";
-          el.style.background = color;
-
-          new mapboxgl.default.Marker({ element: el })
-            .setLngLat([loc.longitude, loc.latitude])
-            .setPopup(new mapboxgl.default.Popup({ offset: 12 }).setHTML(`<strong>${loc.name}</strong><br/>${label}`))
-            .addTo(map);
+          const label =
+            loc.overallScore !== null
+              ? `${loc.overallLevel} · ${Math.round(loc.overallScore)}/100`
+              : "No risk score computed yet";
+          const updated = loc.computedAt ? `<br/><span style="opacity:.7">Updated ${new Date(loc.computedAt).toLocaleString()}</span>` : "";
+          L.circleMarker([loc.latitude, loc.longitude], {
+            radius: 10,
+            color: "#ffffff",
+            weight: 2,
+            fillColor: color,
+            fillOpacity: 0.9,
+          })
+            .addTo(map)
+            .bindPopup(`<strong>${escapeHtml(loc.name)}</strong><br/>${escapeHtml(label)}${updated}`);
         }
 
-        for (const resource of emergencyResources) {
-          const el = document.createElement("div");
-          el.style.width = "10px";
-          el.style.height = "10px";
-          el.style.borderRadius = "2px";
-          el.style.background = RESOURCE_COLOR[resource.type];
-
-          new mapboxgl.default.Marker({ element: el })
-            .setLngLat([resource.longitude, resource.latitude])
-            .setPopup(new mapboxgl.default.Popup({ offset: 8 }).setHTML(`<strong>${resource.name}</strong><br/>${resource.type.replace("_", " ")}`))
-            .addTo(map);
+        // Real emergency-resource markers (seed facility data — labelled as such in the UI).
+        for (const r of emergencyResources) {
+          L.circleMarker([r.latitude, r.longitude], {
+            radius: 5,
+            color: RESOURCE_COLOR[r.type],
+            weight: 2,
+            fillColor: RESOURCE_COLOR[r.type],
+            fillOpacity: 0.7,
+          })
+            .addTo(map)
+            .bindPopup(`<strong>${escapeHtml(r.name)}</strong><br/>${RESOURCE_LABEL[r.type]}`);
         }
+
+        setLoaded(true);
+        // Leaflet needs a size recalculation once its container is laid out.
+        setTimeout(() => map.invalidateSize(), 0);
       })
       .catch(() => {
-        if (!cancelled) setError("The map failed to load. Please refresh the page.");
+        if (!cancelled) setError("The map failed to load. The location data below is still available.");
       });
 
     return () => {
@@ -96,15 +113,7 @@ export function RiskMapView({ mapConfig, locations, emergencyResources }: RiskMa
       mapRef.current?.remove();
       mapRef.current = null;
     };
-  }, [mapConfig.clientToken, mapConfig.styleUrl, locations, emergencyResources]);
-
-  if (!mapConfig.clientToken) {
-    return (
-      <Alert variant="error">
-        Map is not configured for this environment (missing public Mapbox token). Location risk data is still listed below.
-      </Alert>
-    );
-  }
+  }, [mapConfig, center.latitude, center.longitude, locations, emergencyResources]);
 
   if (error) {
     return <Alert variant="error">{error}</Alert>;
@@ -113,7 +122,7 @@ export function RiskMapView({ mapConfig, locations, emergencyResources }: RiskMa
   return (
     <div className="relative h-[480px] w-full overflow-hidden rounded-xl border border-border">
       {!loaded && (
-        <div className="absolute inset-0 z-10 flex items-center justify-center bg-surface-muted" aria-busy="true">
+        <div className="absolute inset-0 z-[500] flex items-center justify-center bg-surface-muted" aria-busy="true">
           <span className="text-sm text-foreground-muted">Loading map…</span>
         </div>
       )}
