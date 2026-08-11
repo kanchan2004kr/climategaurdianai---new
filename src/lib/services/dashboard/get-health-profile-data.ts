@@ -1,5 +1,4 @@
 import { prisma } from "@/lib/db";
-import { generateAIResponse } from "@/lib/providers/ai";
 import { calculateAirRisk, calculateOverallRisk } from "@/lib/services/risk-engine";
 import { calculateHeatRisk } from "@/lib/services/heat-risk";
 import { calculateWaterRisk } from "@/lib/services/water-risk";
@@ -34,7 +33,6 @@ export interface HealthProfileData {
   personalized: { air: RiskResult; heat: RiskResult; overall: RiskResult };
   /** Air/Heat are the only engines that currently accept a vulnerability adjustment. */
   personalizationSupported: { air: boolean; heat: boolean; water: false; disease: false; disaster: false };
-  actionPlan: { content: string; isFallback: boolean; disclaimer?: string };
 }
 
 export async function getHealthProfileData(userId: string, requestedLocationId?: string): Promise<HealthProfileData> {
@@ -89,19 +87,8 @@ export async function getHealthProfileData(userId: string, requestedLocationId?:
     disasterScore: disasterMaxScore,
   });
 
-  const actionPlan = await generateAIResponse({
-    systemPrompt:
-      "You are ClimateGuardian AI's personal action-plan generator. Using the structured risk data and the user's supported profile factors, write a short, concrete plan: what to do today, the best time window for outdoor activity, and one air-specific note if relevant. Never diagnose disease, never recommend medication, never claim certainty. State this is general safety guidance, not a medical diagnosis.",
-    userMessage: "Give me my personal climate action plan for today.",
-    structuredData: {
-      overallRisk: { score: personalizedOverall.score, level: personalizedOverall.level },
-      airRisk: { score: personalizedAir.score, level: personalizedAir.level },
-      heatRisk: { score: personalizedHeat.score, level: personalizedHeat.level },
-      vulnerabilityCategory: profile?.vulnerabilityCategory ?? "NONE",
-      outdoorWorker: profile?.outdoorWorker ?? false,
-      location: location.name,
-    },
-  });
+  // The AI action plan is streamed separately (see get-health-action-plan.ts) so a
+  // slow model call never blocks the personalized risk data below.
 
   return {
     location,
@@ -125,6 +112,5 @@ export async function getHealthProfileData(userId: string, requestedLocationId?:
     baseline: { air: baselineAir, heat: baselineHeat, overall: baselineOverall },
     personalized: { air: personalizedAir, heat: personalizedHeat, overall: personalizedOverall },
     personalizationSupported: { air: true, heat: true, water: false, disease: false, disaster: false },
-    actionPlan,
   };
 }

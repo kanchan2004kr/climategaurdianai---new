@@ -17,7 +17,10 @@ export class OpenMeteoProvider implements WeatherProvider {
     url.searchParams.set("daily", "precipitation_sum");
     url.searchParams.set("timezone", "auto");
 
-    const res = await fetch(url.toString(), { next: { revalidate: 600 } });
+    const res = await fetch(url.toString(), {
+      next: { revalidate: 600 },
+      signal: AbortSignal.timeout(5000),
+    });
     if (!res.ok) {
       throw new Error(`Open-Meteo request failed: ${res.status}`);
     }

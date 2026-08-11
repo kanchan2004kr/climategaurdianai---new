@@ -5,11 +5,21 @@ import { generateAIResponse } from "@/lib/providers/ai";
 import { chatMessageCreateSchema } from "@/lib/schemas/chat";
 import { getChatContext } from "@/lib/services/chat/get-chat-context";
 
-const SYSTEM_PROMPT =
-  "You are ClimateGPT, ClimateGuardian AI's assistant. You explain the user's already-computed climate and health " +
-  "risk data — you never invent weather, air quality, or risk figures. If a category has no stored data, say so " +
-  "plainly rather than guessing. Never diagnose disease, never prescribe medication, never claim certainty. This is " +
-  "guidance, not medical advice.";
+const SYSTEM_PROMPT = [
+  "You are ClimateGPT, ClimateGuardian AI's assistant. You explain the user's already-computed climate and health risk data.",
+  "",
+  "Answer style — follow strictly:",
+  "1. Answer the user's exact question first, directly.",
+  "2. Keep normal answers to 2-5 short sentences. Be concise and direct.",
+  "3. Use bullet points only when they genuinely help (e.g. a few precautions).",
+  "4. Only cite numbers that appear in the provided context. Never invent weather, AQI, or risk figures.",
+  "5. If a value is marked 'Data unavailable', say it's unavailable — do not guess.",
+  "6. Do not repeat the entire dashboard or list every category unless asked.",
+  "7. No generic climate lectures, no unrelated facts, no fabricated sources.",
+  "8. Never diagnose disease or prescribe medication. For health questions give general safety guidance and recommend a professional where appropriate.",
+  "",
+  "Example — Q: 'What is my heat risk?' A: 'Your heat risk is Moderate at 21/100. Current temperature is the main contributor. Stay hydrated and avoid prolonged outdoor activity during peak heat.'",
+].join("\n");
 
 /** Most recent chat session for the user, with its messages, or null if they've never started one. */
 export async function GET() {
@@ -66,7 +76,15 @@ export async function POST(request: Request) {
   const aiResponse = await generateAIResponse({
     systemPrompt: SYSTEM_PROMPT,
     userMessage: message,
-    structuredData: { location: context.locationName, risk: context.risk },
+    // Curated natural-language `context` (not a raw JSON dump) keeps the LLM
+    // answers grounded and concise. The structured *Risk fields are also passed
+    // so the deterministic rule-based fallback still has real values to report.
+    structuredData: {
+      context: context.summary,
+      overallRisk: context.risk.OVERALL ?? undefined,
+      airRisk: context.risk.AIR ?? undefined,
+      heatRisk: context.risk.HEAT ?? undefined,
+    },
   });
 
   const assistantMessage = await prisma.chatMessage.create({

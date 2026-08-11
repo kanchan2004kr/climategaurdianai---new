@@ -99,32 +99,37 @@ export async function getAlertsData(userId: string, requestedLocationId?: string
       })
     : candidates;
 
-  // Persist only genuinely new alerts — skip if an active one of the same type
-  // already exists for this location within the dedup window.
-  for (const candidate of filtered) {
-    const existing = await prisma.alert.findFirst({
+  // Persist only genuinely new alerts. One query fetches every active alert of the
+  // candidate types already present in the dedup window, then a single createMany
+  // inserts the rest — replacing the previous per-candidate findFirst+create loop.
+  if (filtered.length > 0) {
+    const existing = await prisma.alert.findMany({
       where: {
         locationId: location.id,
-        type: candidate.type,
+        type: { in: filtered.map((c) => c.type) },
         isActive: true,
         createdAt: { gte: new Date(Date.now() - DEDUP_WINDOW_MS) },
       },
+      select: { type: true },
     });
-    if (existing) continue;
+    const existingTypes = new Set(existing.map((e) => e.type));
 
-    await prisma.alert.create({
-      data: {
-        userId,
-        locationId: location.id,
-        type: candidate.type,
-        severity: candidate.severity,
-        source: "MODELLED_RISK",
-        title: candidate.title,
-        message: candidate.message,
-        isActive: true,
-        expiresAt: new Date(Date.now() + DEFAULT_EXPIRY_MS),
-      },
-    });
+    const toCreate = filtered.filter((c) => !existingTypes.has(c.type));
+    if (toCreate.length > 0) {
+      await prisma.alert.createMany({
+        data: toCreate.map((candidate) => ({
+          userId,
+          locationId: location.id,
+          type: candidate.type,
+          severity: candidate.severity,
+          source: "MODELLED_RISK" as const,
+          title: candidate.title,
+          message: candidate.message,
+          isActive: true,
+          expiresAt: new Date(Date.now() + DEFAULT_EXPIRY_MS),
+        })),
+      });
+    }
   }
 
   const rows = await prisma.alert.findMany({

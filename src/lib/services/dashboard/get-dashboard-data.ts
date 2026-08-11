@@ -1,5 +1,4 @@
 import { prisma } from "@/lib/db";
-import { generateAIResponse } from "@/lib/providers/ai";
 import { getWeatherForecast, type WeatherForecast } from "@/lib/providers/weather/forecast";
 import { calculateAirRisk, calculateOverallRisk } from "@/lib/services/risk-engine";
 import { calculateHeatRisk } from "@/lib/services/heat-risk";
@@ -27,7 +26,6 @@ export interface DashboardData {
     disease: { dengueScore: number; malariaScore: number; level: string; disclaimer: string };
     disaster: { maxScore: number; level: string; disclaimer: string; items: Array<{ type: string; score: number; level: string }> };
   };
-  aiBrief: { content: string; isFallback: boolean; disclaimer?: string };
   activeAlerts: Array<{
     id: string;
     type: string;
@@ -119,18 +117,9 @@ export async function getDashboardData(userId: string, requestedLocationId?: str
   ];
   const emergencyPreview = sortByDistance(emergencyResources, location).slice(0, 3);
 
-  const aiBrief = await generateAIResponse({
-    systemPrompt:
-      "You are ClimateGuardian AI's climate-health brief generator. Summarize the user's current environmental risk in 2-3 short sentences, then suggest 2-3 concrete precautions. Never diagnose disease, never prescribe medication, never claim certainty. This is guidance, not medical advice.",
-    userMessage: "Summarize my current climate-health risk and what I should do now.",
-    structuredData: {
-      overallRisk: { score: overall.score, level: overall.level },
-      airRisk: { score: airRisk.score, level: airRisk.level },
-      heatRisk: { score: heatRisk.score, level: heatRisk.level },
-      waterRisk: { score: waterRisk.score, level: waterRisk.level },
-      location: location.name,
-    },
-  });
+  // Note: the AI Climate Brief is intentionally NOT generated here. It's streamed
+  // separately via <Suspense> (see get-ai-brief.ts + ai-brief-section.tsx) so a slow
+  // or hanging model call never blocks the dashboard's real weather/risk data.
 
   await maybeRecordRiskSnapshot(location.id, overall, airRisk, heatRisk, waterRisk, diseaseMaxScore, diseaseMaxLevel, disasterMax);
 
@@ -157,7 +146,6 @@ export async function getDashboardData(userId: string, requestedLocationId?: str
         items: disasterRisk.items.map((i) => ({ type: i.type, score: i.score, level: i.level })),
       },
     },
-    aiBrief,
     activeAlerts: alerts.map((a) => ({
       id: a.id,
       type: a.type,

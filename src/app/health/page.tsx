@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import { auth } from "@/lib/auth";
 import { getHealthProfileData } from "@/lib/services/dashboard/get-health-profile-data";
 import { ProfileWizard } from "@/components/health/profile-wizard";
 import { RiskComparison } from "@/components/health/risk-comparison";
-import { AIClimateBrief } from "@/components/dashboard/ai-climate-brief";
+import { ActionPlanSection, ActionPlanSkeleton } from "@/components/health/action-plan-section";
 import { Alert } from "@/components/ui/alert";
 import { Reveal } from "@/components/motion/reveal";
 
@@ -48,7 +49,9 @@ export default async function HealthPage(props: PageProps<"/health">) {
       </Reveal>
 
       <Reveal direction="left">
-        <AIClimateBrief content={data.actionPlan.content} isFallback={data.actionPlan.isFallback} disclaimer={data.actionPlan.disclaimer} />
+        <Suspense fallback={<ActionPlanSkeleton />}>
+          <ActionPlanSection userId={session.user.id} locationId={data.location.id} />
+        </Suspense>
       </Reveal>
     </div>
   );

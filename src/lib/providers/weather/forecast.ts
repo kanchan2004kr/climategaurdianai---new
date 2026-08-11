@@ -23,7 +23,10 @@ async function getLiveForecast(point: GeoPoint): Promise<WeatherForecast> {
   url.searchParams.set("forecast_days", String(FORECAST_DAYS));
   url.searchParams.set("timezone", "auto");
 
-  const res = await fetch(url.toString(), { next: { revalidate: 3600 } });
+  const res = await fetch(url.toString(), {
+    next: { revalidate: 3600 },
+    signal: AbortSignal.timeout(5000),
+  });
   if (!res.ok) throw new Error(`Open-Meteo forecast request failed: ${res.status}`);
 
   const json = await res.json();

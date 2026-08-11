@@ -28,6 +28,7 @@ export class OpenAQProvider implements AirQualityProvider {
     const res = await fetch(locationsUrl.toString(), {
       headers: { "X-API-Key": apiKey },
       next: { revalidate: 900 },
+      signal: AbortSignal.timeout(5000),
     });
     if (!res.ok) throw new Error(`OpenAQ request failed: ${res.status}`);
 
@@ -40,6 +41,7 @@ export class OpenAQProvider implements AirQualityProvider {
     const stationRes = await fetch(`${BASE_URL}/locations/${stationId}`, {
       headers: { "X-API-Key": apiKey },
       next: { revalidate: 3600 },
+      signal: AbortSignal.timeout(5000),
     });
     if (!stationRes.ok) throw new Error(`OpenAQ station detail request failed: ${stationRes.status}`);
     const stationJson = await stationRes.json();
@@ -54,6 +56,7 @@ export class OpenAQProvider implements AirQualityProvider {
     const latestRes = await fetch(latestUrl.toString(), {
       headers: { "X-API-Key": apiKey },
       next: { revalidate: 900 },
+      signal: AbortSignal.timeout(5000),
     });
     if (!latestRes.ok) throw new Error(`OpenAQ latest request failed: ${latestRes.status}`);
     const latestJson = await latestRes.json();

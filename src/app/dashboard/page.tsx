@@ -1,10 +1,11 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import { auth } from "@/lib/auth";
 import { getDashboardData } from "@/lib/services/dashboard/get-dashboard-data";
 import { ClimateHealthScore } from "@/components/dashboard/climate-health-score";
 import { RiskCategoryGrid } from "@/components/dashboard/risk-category-grid";
 import { CurrentConditions } from "@/components/dashboard/current-conditions";
-import { AIClimateBrief } from "@/components/dashboard/ai-climate-brief";
+import { AIBriefSection, AIBriefSkeleton } from "@/components/dashboard/ai-brief-section";
 import { ActiveAlerts } from "@/components/dashboard/active-alerts";
 import { RiskTrendChart } from "@/components/dashboard/risk-trend-chart";
 import { EmergencyPreview } from "@/components/dashboard/emergency-preview";
@@ -130,11 +131,9 @@ export default async function DashboardPage(props: PageProps<"/dashboard">) {
         </div>
         <div className="flex flex-col gap-6">
           <Reveal direction="left">
-            <AIClimateBrief
-              content={data.aiBrief.content}
-              isFallback={data.aiBrief.isFallback}
-              disclaimer={data.aiBrief.disclaimer}
-            />
+            <Suspense fallback={<AIBriefSkeleton />}>
+              <AIBriefSection userId={session.user.id} locationId={data.location.id} />
+            </Suspense>
           </Reveal>
           <Reveal direction="left" delay={0.05}>
             <ActiveAlerts alerts={data.activeAlerts} locationName={data.location.name} />

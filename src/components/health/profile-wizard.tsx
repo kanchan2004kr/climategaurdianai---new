@@ -87,7 +87,7 @@ export function ProfileWizard({
   function useMyLocation() {
     setLocationError(null);
     if (!("geolocation" in navigator)) {
-      setLocationError("Geolocation isn't available in this browser.");
+      setLocationError("Geolocation isn't supported by this browser. Pick a saved location instead.");
       return;
     }
     setLocatingInProgress(true);
@@ -98,7 +98,7 @@ export function ProfileWizard({
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              name: "My current location",
+              name: "Current location",
               latitude: pos.coords.latitude,
               longitude: pos.coords.longitude,
             }),
@@ -106,16 +106,28 @@ export function ProfileWizard({
           const data = await res.json();
           if (!res.ok) throw new Error(data.error ?? "Failed to save location");
           setSelectedLocationId(data.location.id);
+          // The API set the global selected-location cookie; refresh so the rest
+          // of the app (dashboard/health/etc.) picks up the new location.
+          router.refresh();
         } catch (err) {
           setLocationError(err instanceof Error ? err.message : "Failed to save your location.");
         } finally {
           setLocatingInProgress(false);
         }
       },
-      () => {
-        setLocationError("Location permission was denied or unavailable.");
+      (err) => {
+        const message =
+          err.code === err.PERMISSION_DENIED
+            ? "Location permission was denied. Enable it in your browser settings, or pick a saved location."
+            : err.code === err.POSITION_UNAVAILABLE
+              ? "Your location is currently unavailable. Try again, or pick a saved location."
+              : err.code === err.TIMEOUT
+                ? "Getting your location timed out. Try again, or pick a saved location."
+                : "Couldn't get your location. Pick a saved location instead.";
+        setLocationError(message);
         setLocatingInProgress(false);
-      }
+      },
+      { enableHighAccuracy: false, timeout: 10000, maximumAge: 300000 }
     );
   }
 

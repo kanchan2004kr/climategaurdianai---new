@@ -6,6 +6,13 @@ import type { AIPromptContext, AIProvider, AIResponse } from "./types";
 const GEMINI_URL =
   "https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent";
 
+// Keep the AI off the critical path: if Gemini hasn't answered within this
+// window we abort and let the fallback chain (OpenRouter -> rule-based) take
+// over, rather than letting a hanging request block the whole page. Dashboard
+// briefs are streamed via <Suspense>, so this can be generous without blocking
+// the visible page; it only bounds the worst case.
+const REQUEST_TIMEOUT_MS = 12000;
+
 export class GeminiProvider implements AIProvider {
   readonly name = "Gemini";
 
@@ -19,17 +26,26 @@ export class GeminiProvider implements AIProvider {
       2
     )}\n\nUser question: ${context.userMessage}`;
 
-    const res = await fetch(`${GEMINI_URL}?key=${apiKey}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        // This model spends part of its token budget on internal reasoning
-        // before the visible answer, so 500 tokens was too small and always
-        // truncated to empty content — 2048 leaves room for both.
-        generationConfig: { temperature: 0.4, maxOutputTokens: 2048 },
-      }),
-    });
+    let res: Response;
+    try {
+      res = await fetch(`${GEMINI_URL}?key=${apiKey}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          // This model spends part of its token budget on internal reasoning
+          // before the visible answer, so 500 tokens was too small and always
+          // truncated to empty content — 2048 leaves room for both.
+          generationConfig: { temperature: 0.4, maxOutputTokens: 2048 },
+        }),
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      });
+    } catch (err) {
+      if (err instanceof Error && (err.name === "AbortError" || err.name === "TimeoutError")) {
+        throw new Error("Gemini request timed out");
+      }
+      throw err;
+    }
 
     if (!res.ok) throw new Error(`Gemini request failed: ${res.status}`);
 

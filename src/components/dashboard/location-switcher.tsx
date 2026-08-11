@@ -1,20 +1,21 @@
 "use client";
 
 import { useTransition } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { MapPin } from "lucide-react";
 import type { LocationOption } from "@/lib/services/dashboard/locations";
+import { selectLocationAction } from "@/lib/location/actions";
 
 export function LocationSwitcher({ locations, currentId }: { locations: LocationOption[]; currentId: string }) {
   const router = useRouter();
-  const searchParams = useSearchParams();
   const [isPending, startTransition] = useTransition();
 
   function handleChange(id: string) {
-    const params = new URLSearchParams(searchParams.toString());
-    params.set("location", id);
-    startTransition(() => {
-      router.push(`/dashboard?${params.toString()}`);
+    startTransition(async () => {
+      // Persist to the shared cookie, then refresh the *current* page so it
+      // re-resolves to the new location — no more forced jump to /dashboard.
+      await selectLocationAction(id);
+      router.refresh();
     });
   }
 

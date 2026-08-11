@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { prisma } from "@/lib/db";
 import { getWeather } from "@/lib/providers/weather";
 import { getAirQuality } from "@/lib/providers/air-quality";
@@ -14,7 +15,7 @@ export interface EnvironmentSnapshot {
 }
 
 /** Resolves location + fetches real weather/air/profile — the common prefix shared by the dashboard and every risk-detail page. */
-export async function getEnvironmentSnapshot(userId: string, requestedLocationId?: string): Promise<EnvironmentSnapshot> {
+export const getEnvironmentSnapshot = cache(async function getEnvironmentSnapshot(userId: string, requestedLocationId?: string): Promise<EnvironmentSnapshot> {
   const [location, availableLocations] = await Promise.all([
     resolveLocation(userId, requestedLocationId),
     getAvailableLocations(userId),
@@ -39,10 +40,10 @@ export async function getEnvironmentSnapshot(userId: string, requestedLocationId
     : undefined;
 
   return { location, availableLocations, weather, air, vulnerability };
-}
+});
 
-/** Real DB-backed inputs for the water-risk engine — shared by the dashboard and /risks/water. */
-export async function getWaterRiskInputs(locationId: string, city: string | undefined) {
+/** Real DB-backed inputs for the water-risk engine — shared by the dashboard and /risks/water. Cached so the dashboard and its streamed AI brief don't each re-run these 4 queries in one request. */
+export const getWaterRiskInputs = cache(async function getWaterRiskInputs(locationId: string, city: string | undefined) {
   const [contamination, noWater, flooding, waterPoints] = await Promise.all([
     prisma.citizenReport.count({
       where: { locationId, type: "UNSAFE_WATER", status: { in: ["SUBMITTED", "UNDER_REVIEW"] } },
@@ -65,7 +66,7 @@ export async function getWaterRiskInputs(locationId: string, city: string | unde
     activeFloodingReports: flooding,
     operationalWaterPointRatio,
   };
-}
+});
 
 export interface TrendPoint {
   computedAt: string;
