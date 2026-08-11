@@ -1,0 +1,122 @@
+@import "tailwindcss";
+
+:root {
+  --radius: 0.75rem;
+
+  /* Neutral surface scale — cool slate, not pure gray */
+  --background: #f6f7f8;
+  --surface: #ffffff;
+  --surface-muted: #eef1f2;
+  --foreground: #10161a;
+  --foreground-muted: #52606b;
+  --border: #dde2e5;
+
+  /* Brand — deep teal, evokes atmosphere/water rather than generic SaaS violet */
+  --brand: #0f6e63;
+  --brand-foreground: #f0fdf9;
+  --brand-soft: #e3f3ef;
+
+  /* Risk scale, LOW -> EXTREME */
+  --risk-low: #16a34a;
+  --risk-moderate: #ca8a04;
+  --risk-elevated: #ea580c;
+  --risk-high: #dc2626;
+  --risk-extreme: #9d174d;
+
+  --focus-ring: #0f6e63;
+}
+
+.dark {
+  --background: #0a0f12;
+  --surface: #121a1e;
+  --surface-muted: #182228;
+  --foreground: #eef3f4;
+  --foreground-muted: #96a5ab;
+  --border: #223038;
+
+  --brand: #2dd4bf;
+  --brand-foreground: #062521;
+  --brand-soft: #10302c;
+
+  --risk-low: #4ade80;
+  --risk-moderate: #facc15;
+  --risk-elevated: #fb923c;
+  --risk-high: #f87171;
+  --risk-extreme: #f472b6;
+
+  --focus-ring: #2dd4bf;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-surface-muted: var(--surface-muted);
+  --color-foreground: var(--foreground);
+  --color-foreground-muted: var(--foreground-muted);
+  --color-border: var(--border);
+  --color-brand: var(--brand);
+  --color-brand-foreground: var(--brand-foreground);
+  --color-brand-soft: var(--brand-soft);
+  --color-risk-low: var(--risk-low);
+  --color-risk-moderate: var(--risk-moderate);
+  --color-risk-elevated: var(--risk-elevated);
+  --color-risk-high: var(--risk-high);
+  --color-risk-extreme: var(--risk-extreme);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+  --radius-lg: var(--radius);
+}
+
+@layer base {
+  * {
+    border-color: var(--border);
+  }
+
+  body {
+    background: var(--background);
+    color: var(--foreground);
+  }
+
+  ::selection {
+    background: var(--brand-soft);
+    color: var(--brand);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 2px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/*
+ * Scroll/mount reveal primitive for Reveal/StaggerItem. Pure CSS so the
+ * hidden -> visible transition never depends on client-only state during
+ * hydration (the class toggle happens after mount, well after hydration
+ * completes, so server and first client paint always match).
+ */
+.reveal {
+  opacity: 0;
+  transform: translate(var(--reveal-x, 0), var(--reveal-y, 0));
+  transition: opacity var(--reveal-duration, 0.35s) var(--reveal-delay, 0s) cubic-bezier(0.16, 1, 0.3, 1),
+    transform var(--reveal-duration, 0.35s) var(--reveal-delay, 0s) cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.reveal.reveal-visible {
+  opacity: 1;
+  transform: translate(0, 0);
+}

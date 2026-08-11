@@ -1,0 +1,468 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Auth / Users
+// ─────────────────────────────────────────────────────────────────────────
+
+enum UserRole {
+  USER
+  GOVERNMENT
+  ADMIN
+}
+
+enum AgeGroup {
+  CHILD
+  YOUTH
+  ADULT
+  SENIOR
+}
+
+enum VulnerabilityCategory {
+  NONE
+  RESPIRATORY
+  CARDIOVASCULAR
+  PREGNANT
+  ELDERLY
+  CHILD
+  OUTDOOR_WORKER
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  emailVerified DateTime?
+  image         String?
+  passwordHash  String?
+  role          UserRole  @default(USER)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  accounts      Account[]
+  sessions      Session[]
+  profile       Profile?
+  locations     Location[]
+  alerts        Alert[]
+  citizenReports CitizenReport[]
+  reviewedReports CitizenReport[] @relation("ReportReviewer")
+  carbonRecords CarbonRecord[]
+  chatSessions  ChatSession[]
+  auditLogs     AuditLog[]
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+model Profile {
+  id                  String                @id @default(cuid())
+  userId              String                @unique
+  ageGroup            AgeGroup?
+  vulnerabilityCategory VulnerabilityCategory @default(NONE)
+  outdoorWorker       Boolean               @default(false)
+  notifyEmail         Boolean               @default(true)
+  notifyPush          Boolean               @default(false)
+  notifyAqi           Boolean               @default(true)
+  notifyHeat          Boolean               @default(true)
+  notifyRain           Boolean               @default(true)
+  notifyFlood         Boolean               @default(true)
+  notifyWater         Boolean               @default(true)
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime              @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Locations & Environmental Data
+// ─────────────────────────────────────────────────────────────────────────
+
+model Location {
+  id        String   @id @default(cuid())
+  userId    String?
+  name      String
+  city      String?
+  region    String?
+  country   String?
+  latitude  Float
+  longitude Float
+  isPrimary Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user               User?               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  weatherRecords     WeatherRecord[]
+  airQualityRecords  AirQualityRecord[]
+  riskScores         RiskScore[]
+  alerts             Alert[]
+  citizenReports     CitizenReport[]
+
+  @@index([latitude, longitude])
+}
+
+model WeatherRecord {
+  id             String   @id @default(cuid())
+  locationId     String
+  temperature    Float
+  humidity       Float
+  windSpeed      Float
+  precipitation  Float
+  uvIndex        Float?
+  rainfallMm     Float?
+  isDemoData     Boolean  @default(false)
+  source         String
+  recordedAt     DateTime @default(now())
+
+  location Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+
+  @@index([locationId, recordedAt])
+}
+
+model AirQualityRecord {
+  id           String   @id @default(cuid())
+  locationId   String
+  aqi          Float
+  pm25         Float
+  pm10         Float?
+  o3           Float?
+  no2          Float?
+  so2          Float?
+  co           Float?
+  isDemoData   Boolean  @default(false)
+  source       String
+  recordedAt   DateTime @default(now())
+
+  location Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+
+  @@index([locationId, recordedAt])
+}
+
+enum RiskCategory {
+  AIR
+  HEAT
+  WATER
+  DISEASE
+  DISASTER
+  OVERALL
+}
+
+enum RiskLevel {
+  LOW
+  MODERATE
+  ELEVATED
+  HIGH
+  EXTREME
+}
+
+model RiskScore {
+  id          String       @id @default(cuid())
+  locationId  String
+  category    RiskCategory
+  score       Float
+  level       RiskLevel
+  factors     Json
+  isDemoData  Boolean      @default(false)
+  computedAt  DateTime     @default(now())
+
+  location Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+
+  @@index([locationId, category, computedAt])
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Alerts
+// ─────────────────────────────────────────────────────────────────────────
+
+enum AlertType {
+  HIGH_AQI
+  HIGH_HEAT
+  HEAVY_RAIN
+  FLOOD_RISK
+  WATER_ALERT
+  DISEASE_RISK
+  WILDFIRE_RISK
+  CYCLONE_RISK
+}
+
+enum AlertSeverity {
+  INFO
+  WARNING
+  SEVERE
+  EXTREME
+}
+
+enum AlertSource {
+  OFFICIAL_ALERT
+  MODELLED_RISK
+  USER_REPORT
+}
+
+model Alert {
+  id          String        @id @default(cuid())
+  userId      String?
+  locationId  String?
+  type        AlertType
+  severity    AlertSeverity
+  source      AlertSource   @default(MODELLED_RISK)
+  title       String
+  message     String
+  isActive    Boolean       @default(true)
+  createdAt   DateTime      @default(now())
+  expiresAt   DateTime?
+
+  user     User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  location Location? @relation(fields: [locationId], references: [id], onDelete: Cascade)
+
+  @@index([isActive, type])
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Emergency Resources
+// ─────────────────────────────────────────────────────────────────────────
+
+model Hospital {
+  id        String   @id @default(cuid())
+  name      String
+  address   String
+  city      String
+  latitude  Float
+  longitude Float
+  phone     String?
+  emergency Boolean  @default(true)
+  capacity  Int?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([latitude, longitude])
+}
+
+model Shelter {
+  id        String   @id @default(cuid())
+  name      String
+  address   String
+  city      String
+  latitude  Float
+  longitude Float
+  phone     String?
+  capacity  Int?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([latitude, longitude])
+}
+
+enum WaterPointType {
+  PUBLIC_TAP
+  BOREWELL
+  TANKER_POINT
+  RELIEF_CENTER
+  TREATMENT_PLANT
+}
+
+enum WaterPointStatus {
+  OPERATIONAL
+  LIMITED
+  NOT_OPERATIONAL
+  UNKNOWN
+}
+
+model WaterPoint {
+  id        String           @id @default(cuid())
+  name      String
+  type      WaterPointType
+  status    WaterPointStatus @default(UNKNOWN)
+  address   String
+  city      String
+  latitude  Float
+  longitude Float
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  @@index([latitude, longitude])
+}
+
+enum CitizenReportType {
+  FLOODING
+  EXTREME_HEAT
+  SEVERE_POLLUTION
+  WATER_SHORTAGE
+  WILDFIRE_SMOKE
+  UNSAFE_WATER
+  INFRASTRUCTURE_DAMAGE
+  OTHER
+}
+
+enum CitizenReportStatus {
+  SUBMITTED
+  UNDER_REVIEW
+  VERIFIED
+  REJECTED
+  RESOLVED
+}
+
+model CitizenReport {
+  id          String              @id @default(cuid())
+  userId      String?
+  locationId  String?
+  type        CitizenReportType
+  severity    AlertSeverity       @default(INFO)
+  description String
+  imageUrl    String?
+  latitude    Float
+  longitude   Float
+  status      CitizenReportStatus @default(SUBMITTED)
+  reviewedByUserId String?
+  reviewedAt  DateTime?
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+
+  user       User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+  location   Location? @relation(fields: [locationId], references: [id], onDelete: SetNull)
+  reviewedBy User?     @relation("ReportReviewer", fields: [reviewedByUserId], references: [id], onDelete: SetNull)
+
+  @@index([status, type])
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Carbon Wallet
+// ─────────────────────────────────────────────────────────────────────────
+
+enum CarbonCategory {
+  TRANSPORT
+  FUEL
+  ELECTRICITY
+  FLIGHTS
+  FOOD
+  SHOPPING
+}
+
+model CarbonRecord {
+  id          String         @id @default(cuid())
+  userId      String
+  category    CarbonCategory
+  description String?
+  quantity    Float
+  unit        String
+  co2eKg      Float
+  recordedAt  DateTime       @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, recordedAt])
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// ClimateGPT
+// ─────────────────────────────────────────────────────────────────────────
+
+model ChatSession {
+  id        String        @id @default(cuid())
+  userId    String
+  title     String?
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  user     User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages ChatMessage[]
+}
+
+enum ChatRole {
+  USER
+  ASSISTANT
+  SYSTEM
+}
+
+model ChatMessage {
+  id            String   @id @default(cuid())
+  chatSessionId String
+  role          ChatRole
+  content       String
+  contextData   Json?
+  createdAt     DateTime @default(now())
+
+  chatSession ChatSession @relation(fields: [chatSessionId], references: [id], onDelete: Cascade)
+
+  @@index([chatSessionId, createdAt])
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Admin
+// ─────────────────────────────────────────────────────────────────────────
+
+enum DataSourceStatus {
+  HEALTHY
+  DEGRADED
+  DOWN
+  UNKNOWN
+}
+
+model DataSource {
+  id           String            @id @default(cuid())
+  name         String            @unique
+  type         String
+  status       DataSourceStatus  @default(UNKNOWN)
+  lastChecked  DateTime?
+  lastError    String?
+  baseUrl      String?
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+}
+
+model AdminSetting {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     Json
+  updatedAt DateTime @updatedAt
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  action    String
+  target    String?
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([action, createdAt])
+}
