@@ -1,7 +1,9 @@
 import type { AIPromptContext, AIProvider, AIResponse } from "./types";
 
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
-const REQUEST_TIMEOUT_MS = 15000;
+// Bounded so the (streamed, off-critical-path) AI brief can't hang: if OpenRouter
+// stalls we abort and fall through to the rule-based provider instead of waiting.
+const REQUEST_TIMEOUT_MS = 8000;
 
 /** OpenRouter — primary AI provider. Only explains existing risk-engine output; never asked to compute scores itself. */
 export class OpenRouterProvider implements AIProvider {
