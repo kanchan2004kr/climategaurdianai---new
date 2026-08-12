@@ -15,6 +15,7 @@ function getPermissionSnapshot(): NotificationPermission | "unsupported" {
 }
 import { selectLocationAction } from "@/lib/location/actions";
 import { updateNameAction } from "@/lib/profile/actions";
+import { PushNotificationManager } from "./push-notification-manager";
 import type { LocationOption } from "@/lib/services/dashboard/locations";
 
 type NotifyKey = "notifyEmail" | "notifyAqi" | "notifyHeat" | "notifyRain" | "notifyFlood" | "notifyWater";
@@ -194,10 +195,10 @@ export function ProfileSettings({
               </span>
             </span>
           </div>
-          <p className="text-xs text-foreground-muted">
-            Push delivery to this device is coming soon. These preferences already control your in-app alerts.
-          </p>
 
+          <PushNotificationManager />
+
+          <p className="mt-1 text-xs font-medium text-foreground">In-app alert preferences</p>
           {NOTIFY_FIELDS.map(({ key, label }) => (
             <label key={key} className="flex items-center justify-between gap-3 text-sm">
               <span className="text-foreground">{label}</span>

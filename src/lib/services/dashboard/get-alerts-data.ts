@@ -6,6 +6,7 @@ import { calculateDiseaseEnvironmentalRisk } from "@/lib/services/disease-risk";
 import { calculateDisasterRisk } from "@/lib/services/disaster-risk";
 import { generateAlertCandidates, filterByPreferences, type AlertType } from "@/lib/services/notifications";
 import { computeAlertPriority } from "@/lib/services/notifications/priority";
+import { sendPushToUser } from "@/lib/push/web-push";
 import { getEnvironmentSnapshot, getWaterRiskInputs } from "./environment-snapshot";
 import type { LocationOption } from "./locations";
 
@@ -129,6 +130,19 @@ export async function getAlertsData(userId: string, requestedLocationId?: string
           expiresAt: new Date(Date.now() + DEFAULT_EXPIRY_MS),
         })),
       });
+
+      // Push only for genuinely new, high-priority alerts. Because we only create
+      // alerts that don't already exist in the dedup window, this won't re-notify
+      // the same alert on every refresh. Fire-and-forget; never blocks the render.
+      const highPriority = toCreate.filter((c) => c.severity === "SEVERE" || c.severity === "EXTREME");
+      for (const candidate of highPriority) {
+        void sendPushToUser(userId, {
+          title: candidate.title,
+          body: candidate.message,
+          url: "/alerts",
+          tag: `alert-${candidate.type}`, // same type replaces, never stacks duplicates
+        });
+      }
     }
   }
 
