@@ -3,6 +3,7 @@ import { Wind, Thermometer, Droplets, Bug, CloudLightning, MapPin, Brain, Siren,
 import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { ClimateBackground } from "@/components/motion/climate-background";
+import { HeroVideoBackground } from "@/components/motion/hero-video-background";
 import { Reveal } from "@/components/motion/reveal";
 import { StaggerContainer, StaggerItem } from "@/components/motion/stagger-container";
 
@@ -51,6 +52,7 @@ export default function Home() {
 
       {/* HERO */}
       <section className="relative isolate flex min-h-[85vh] flex-col items-center justify-center overflow-hidden px-6 py-24 text-center">
+        <HeroVideoBackground />
         <ClimateBackground />
 
         <Reveal speed="slow">
