@@ -1,11 +1,11 @@
 import Link from "next/link";
 import { HeartPulse, Leaf, ChevronRight } from "lucide-react";
-import { prisma } from "@/lib/db";
+import { getUserProfile } from "@/lib/services/dashboard/environment-snapshot";
 import { getCarbonData } from "@/lib/services/carbon/get-carbon-summary";
 
 export async function PersonalizationLinks({ userId }: { userId: string }) {
   const [profile, carbon] = await Promise.all([
-    prisma.profile.findUnique({ where: { userId } }),
+    getUserProfile(userId),
     getCarbonData(userId, 7),
   ]);
 

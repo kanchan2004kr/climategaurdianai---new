@@ -8,8 +8,9 @@ import { calculateDisasterRisk } from "@/lib/services/disaster-risk";
 import { sortByDistance, type EmergencyResource } from "@/lib/services/emergency-resources";
 import type { RiskResult } from "@/lib/types/risk";
 import type { WeatherData, AirQualityData } from "@/lib/types/environment";
+import { after } from "next/server";
 import { getEnvironmentSnapshot, getWaterRiskInputs, getRiskTrend, type TrendPoint } from "./environment-snapshot";
-import type { LocationOption } from "./locations";
+import { resolveLocation, type LocationOption } from "./locations";
 
 export type { TrendPoint };
 
@@ -47,17 +48,36 @@ export interface DashboardData {
 const RISK_SNAPSHOT_MIN_INTERVAL_MS = 5 * 60 * 1000;
 
 export async function getDashboardData(userId: string, requestedLocationId?: string): Promise<DashboardData> {
-  const { location, availableLocations, weather, air, vulnerability } = await getEnvironmentSnapshot(
-    userId,
-    requestedLocationId
-  );
+  // Resolve the location first (cached — the snapshot below reuses it for free), then
+  // fire every location-dependent query in ONE parallel wave instead of three sequential
+  // stages (snapshot -> water inputs -> emergency/trend/forecast). This collapses the DB
+  // waterfall so total time is one round-trip's worth, not the sum of all of them.
+  const location = await resolveLocation(userId, requestedLocationId);
+  if (!location) throw new Error("NO_LOCATION_AVAILABLE");
+
+  const [snapshot, waterInputs, alerts, hospitals, shelters, waterPointsForPreview, trend, forecast] =
+    await Promise.all([
+      getEnvironmentSnapshot(userId, requestedLocationId),
+      getWaterRiskInputs(location.id, location.city),
+      prisma.alert.findMany({
+        where: { isActive: true, OR: [{ locationId: location.id }, { userId }] },
+        orderBy: { createdAt: "desc" },
+        take: 5,
+      }),
+      prisma.hospital.findMany(),
+      prisma.shelter.findMany(),
+      prisma.waterPoint.findMany(),
+      getRiskTrend(location.id, "OVERALL"),
+      getWeatherForecast(location),
+    ]);
+
+  const { availableLocations, weather, air, vulnerability } = snapshot;
 
   const airRisk = calculateAirRisk(air, weather, vulnerability);
   const heatRisk = calculateHeatRisk(weather, new Date(), vulnerability);
   const baselineAir = calculateAirRisk(air, weather, undefined);
   const baselineHeat = calculateHeatRisk(weather, new Date(), undefined);
 
-  const waterInputs = await getWaterRiskInputs(location.id, location.city);
   const waterRisk = calculateWaterRisk(
     { recentRainfallMm: weather.rainfallMm ?? 0, rainfallLookbackDays: 1, ...waterInputs },
     weather.isDemoData
@@ -97,19 +117,6 @@ export async function getDashboardData(userId: string, requestedLocationId?: str
     disasterScore: disasterMax.score,
   });
 
-  const [alerts, hospitals, shelters, waterPointsForPreview, trend, forecast] = await Promise.all([
-    prisma.alert.findMany({
-      where: { isActive: true, OR: [{ locationId: location.id }, { userId }] },
-      orderBy: { createdAt: "desc" },
-      take: 5,
-    }),
-    prisma.hospital.findMany(),
-    prisma.shelter.findMany(),
-    prisma.waterPoint.findMany(),
-    getRiskTrend(location.id, "OVERALL"),
-    getWeatherForecast(location),
-  ]);
-
   const emergencyResources: EmergencyResource[] = [
     ...hospitals.map((h) => ({ id: h.id, type: "HOSPITAL" as const, name: h.name, address: h.address, city: h.city, phone: h.phone, latitude: h.latitude, longitude: h.longitude })),
     ...shelters.map((s) => ({ id: s.id, type: "SHELTER" as const, name: s.name, address: s.address, city: s.city, phone: s.phone, latitude: s.latitude, longitude: s.longitude })),
@@ -121,7 +128,11 @@ export async function getDashboardData(userId: string, requestedLocationId?: str
   // separately via <Suspense> (see get-ai-brief.ts + ai-brief-section.tsx) so a slow
   // or hanging model call never blocks the dashboard's real weather/risk data.
 
-  await maybeRecordRiskSnapshot(location.id, overall, airRisk, heatRisk, waterRisk, diseaseMaxScore, diseaseMaxLevel, disasterMax);
+  // Recording trend history is a write we don't need to block the response on —
+  // run it after the response is sent so it never adds to the user's wait.
+  after(() =>
+    maybeRecordRiskSnapshot(location.id, overall, airRisk, heatRisk, waterRisk, diseaseMaxScore, diseaseMaxLevel, disasterMax)
+  );
 
   return {
     location,

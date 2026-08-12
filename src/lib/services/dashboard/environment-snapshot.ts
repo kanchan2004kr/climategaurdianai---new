@@ -28,7 +28,7 @@ export const getEnvironmentSnapshot = cache(async function getEnvironmentSnapsho
   const [weather, air, profile] = await Promise.all([
     getWeather(location),
     getAirQuality(location),
-    prisma.profile.findUnique({ where: { userId } }),
+    getUserProfile(userId),
   ]);
 
   const vulnerability: VulnerabilityAdjustment | undefined = profile
@@ -40,6 +40,11 @@ export const getEnvironmentSnapshot = cache(async function getEnvironmentSnapsho
     : undefined;
 
   return { location, availableLocations, weather, air, vulnerability };
+});
+
+/** The user's profile, cached per-request so the snapshot, personalization links, alerts and health pages share a single query instead of each re-fetching it. */
+export const getUserProfile = cache(async function getUserProfile(userId: string) {
+  return prisma.profile.findUnique({ where: { userId } });
 });
 
 /** Real DB-backed inputs for the water-risk engine — shared by the dashboard and /risks/water. Cached so the dashboard and its streamed AI brief don't each re-run these 4 queries in one request. */

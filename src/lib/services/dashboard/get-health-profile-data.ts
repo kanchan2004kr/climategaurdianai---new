@@ -1,12 +1,11 @@
-import { prisma } from "@/lib/db";
 import { calculateAirRisk, calculateOverallRisk } from "@/lib/services/risk-engine";
 import { calculateHeatRisk } from "@/lib/services/heat-risk";
 import { calculateWaterRisk } from "@/lib/services/water-risk";
 import { calculateDiseaseEnvironmentalRisk } from "@/lib/services/disease-risk";
 import { calculateDisasterRisk } from "@/lib/services/disaster-risk";
 import type { RiskResult } from "@/lib/types/risk";
-import { getEnvironmentSnapshot, getWaterRiskInputs } from "./environment-snapshot";
-import type { LocationOption } from "./locations";
+import { getEnvironmentSnapshot, getWaterRiskInputs, getUserProfile } from "./environment-snapshot";
+import { resolveLocation, type LocationOption } from "./locations";
 import type { WeatherData, AirQualityData } from "@/lib/types/environment";
 import type { AgeGroup, VulnerabilityCategory } from "@prisma/client";
 
@@ -36,19 +35,23 @@ export interface HealthProfileData {
 }
 
 export async function getHealthProfileData(userId: string, requestedLocationId?: string): Promise<HealthProfileData> {
-  const { location, availableLocations, weather, air, vulnerability } = await getEnvironmentSnapshot(
-    userId,
-    requestedLocationId
-  );
+  // Resolve location first (cached), then fetch the snapshot, profile and water
+  // inputs in one parallel wave instead of three sequential awaits.
+  const location = await resolveLocation(userId, requestedLocationId);
+  if (!location) throw new Error("NO_LOCATION_AVAILABLE");
 
-  const profile = await prisma.profile.findUnique({ where: { userId } });
+  const [snapshot, profile, waterInputs] = await Promise.all([
+    getEnvironmentSnapshot(userId, requestedLocationId),
+    getUserProfile(userId),
+    getWaterRiskInputs(location.id, location.city),
+  ]);
+  const { availableLocations, weather, air, vulnerability } = snapshot;
 
   const baselineAir = calculateAirRisk(air, weather, undefined);
   const baselineHeat = calculateHeatRisk(weather, new Date(), undefined);
   const personalizedAir = calculateAirRisk(air, weather, vulnerability);
   const personalizedHeat = calculateHeatRisk(weather, new Date(), vulnerability);
 
-  const waterInputs = await getWaterRiskInputs(location.id, location.city);
   const water = calculateWaterRisk(
     { recentRainfallMm: weather.rainfallMm ?? 0, rainfallLookbackDays: 1, ...waterInputs },
     weather.isDemoData

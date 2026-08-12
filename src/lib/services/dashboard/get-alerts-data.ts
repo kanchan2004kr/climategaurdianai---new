@@ -7,8 +7,8 @@ import { calculateDisasterRisk } from "@/lib/services/disaster-risk";
 import { generateAlertCandidates, filterByPreferences, type AlertType } from "@/lib/services/notifications";
 import { computeAlertPriority } from "@/lib/services/notifications/priority";
 import { sendPushToUser } from "@/lib/push/web-push";
-import { getEnvironmentSnapshot, getWaterRiskInputs } from "./environment-snapshot";
-import type { LocationOption } from "./locations";
+import { getEnvironmentSnapshot, getWaterRiskInputs, getUserProfile } from "./environment-snapshot";
+import { resolveLocation, type LocationOption } from "./locations";
 
 const DEDUP_WINDOW_MS = 6 * 60 * 60 * 1000; // don't re-create the same alert type for the same location within 6h
 const DEFAULT_EXPIRY_MS = 6 * 60 * 60 * 1000;
@@ -44,17 +44,19 @@ export interface AlertsData {
 }
 
 export async function getAlertsData(userId: string, requestedLocationId?: string): Promise<AlertsData> {
-  const { location, availableLocations, weather, air, vulnerability } = await getEnvironmentSnapshot(
-    userId,
-    requestedLocationId
-  );
+  const location = await resolveLocation(userId, requestedLocationId);
+  if (!location) throw new Error("NO_LOCATION_AVAILABLE");
 
-  const profile = await prisma.profile.findUnique({ where: { userId } });
+  const [snapshot, profile, waterInputs] = await Promise.all([
+    getEnvironmentSnapshot(userId, requestedLocationId),
+    getUserProfile(userId),
+    getWaterRiskInputs(location.id, location.city),
+  ]);
+  const { availableLocations, weather, air, vulnerability } = snapshot;
 
   const airRisk = calculateAirRisk(air, weather, vulnerability);
   const heatRisk = calculateHeatRisk(weather, new Date(), vulnerability);
 
-  const waterInputs = await getWaterRiskInputs(location.id, location.city);
   const waterRisk = calculateWaterRisk(
     { recentRainfallMm: weather.rainfallMm ?? 0, rainfallLookbackDays: 1, ...waterInputs },
     weather.isDemoData
